@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FS22 → FS20 Mod Converter</title>
+<style>
+:root{color-scheme:dark;--bg:#101610;--panel:#1b251b;--green:#71db48;--muted:#a9b5a4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f1f5ee;font:15px Arial,sans-serif}
+header{text-align:center;padding:24px 16px;background:linear-gradient(140deg,#18391a,#263e20);border-bottom:2px solid var(--green)}
+h1{font-size:25px;margin:8px 0}header p,.muted,small{color:var(--muted)}main{max-width:850px;margin:auto;padding:16px}
+.panel{background:var(--panel);border:1px solid #354435;border-radius:13px;padding:17px;margin-bottom:16px}
+button,.file-label{background:var(--green);color:#10200c;font-weight:bold;border:0;border-radius:8px;padding:12px 14px;cursor:pointer;display:inline-block;margin:4px 3px 4px 0}
+button.secondary{background:#354435;color:white}button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{max-width:100%;margin:8px 0}input[type=search]{width:100%;padding:12px;margin:8px 0;border:1px solid #50614e;border-radius:8px;background:#101610;color:white}
+#status{color:var(--green);white-space:pre-wrap}.file{padding:11px 5px;border-bottom:1px solid #354435;overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c100c;padding:12px;border-radius:8px;max-height:360px;overflow:auto}
+#tractorView{height:300px;background:#263326;border-radius:8px;overflow:hidden}footer{text-align:center;padding:20px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header><div style="font-size:36px">🚜🌾</div><h1>FS22 → FS20 Mod Converter</h1><p>Importar ZIP, analisar arquivos e visualizar modelos compatíveis</p></header>
+<main>
+<section class="panel">
+<h2>📦 1. Importar mod</h2>
+<input id="modFile" type="file" accept=".zip,.glb,.gltf,.xml,.i3d,.txt">
+<p id="status">Aguardando arquivo. Para analisar um mod completo, selecione o ZIP original.</p>
+<button class="secondary" id="clear">Limpar</button>
+</section>
+<section class="panel">
+<h2>🗂️ 2. Arquivos encontrados</h2>
+<input id="search" type="search" placeholder="Buscar XML, I3D, SHAPES, DDS, PNG...">
+<div id="summary" class="muted">Nenhum mod carregado.</div><div id="files">Os arquivos aparecerão aqui.</div>
+</section>
+<section class="panel">
+<h2>🧊 3. Visualizador 3D</h2>
+<p class="muted">Este visualizador carrega GLB/GLTF. Os modelos I3D/SHAPES do FS22 precisam de um conversor específico antes de aparecer aqui como modelo real.</p>
+<div id="tractorView"></div>
+</section>
+<section class="panel">
+<h2>⬇️ 4. Exportar</h2>
+<p class="muted">Gera um novo ZIP preservando os arquivos internos. Isso não garante compatibilidade com o FS20 nem converte automaticamente modelos e XML.</p>
+<button id="exportZip" disabled>Gerar ZIP</button>
+</section>
+<section class="panel"><h2>ℹ️ Limitações desta versão</h2>
+<p>• Lê a lista de arquivos de um ZIP.</p><p>• Permite inspecionar XML, I3D e outros arquivos de texto.</p>
+<p>• Exporta novamente o ZIP.</p><p>• Visualiza modelos GLB/GLTF; não interpreta I3D/SHAPES nativamente.</p>
+<p><small>Requer internet para carregar JSZip e Three.js via CDN.</small></p></section>
+</main><footer>Projeto experimental independente • FS22 Mod Converter</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
+import {GLTFLoader} from "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/GLTFLoader.js";
+const $=id=>document.getElementById(id);
+let zip=null, single=null, currentName="mod", model=null;
+const container=$("tractorView");
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x263326);
+const camera=new THREE.PerspectiveCamera(45,Math.max(1,container.clientWidth)/300,.1,1000);
+camera.position.set(5,3,7);camera.lookAt(0,1,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(container.clientWidth,300);container.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x555555,2));
+const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(5,10,5);scene.add(light);
+scene.add(new THREE.GridHelper(10,10,0x71db48,0x536353));
+const gltfLoader=new GLTFLoader();
+function animate(){requestAnimationFrame(animate);renderer.render(scene,camera)}animate();
+window.addEventListener("resize",()=>{camera.aspect=Math.max(1,container.clientWidth)/300;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,300)});
+function ext(n){return n.split(".").pop().toLowerCase()}
+function files(){return zip?Object.values(zip.files).filter(f=>!f.dir):single?[{name:single.name,_single:true}]:[]}
+function kind(n){let e=ext(n);if(e==="xml")return"⚙️ XML";if(e==="i3d")return"🧊 I3D";if(e==="shapes")return"🔷 SHAPES";if(["dds","png","jpg","jpeg","tga"].includes(e))return"🖼️ Textura";if(["obj","fbx","gltf","glb"].includes(e))return"🧩 Modelo 3D";return"📄 "+e.toUpperCase()}
+function renderFiles(){let all=files(),q=$("search").value.toLowerCase();let shown=all.filter(f=>f.name.toLowerCase().includes(q));$("files").replaceChildren();$("summary").textContent=`${shown.length} de ${all.length} arquivo(s).`;if(!shown.length){$("files").textContent="Nenhum arquivo encontrado.";return}
+for(let f of shown){let row=document.createElement("div");row.className="file";let label=document.createElement("span");label.textContent=kind(f.name)+" — "+f.name;row.append(label);if(["xml","i3d","txt","lua","json","cfg","ini","log"].includes(ext(f.name))){let b=document.createElement("button");b.className="secondary";b.textContent="Ler texto";b.onclick=()=>inspect(f.name);row.append(b)}$("files").append(row)}}
+async function inspect(name){try{let t=single&&single.name===name?await single.text():await zip.file(name).async("string");let pre=document.createElement("pre");pre.textContent=t.slice(0,100000);let old=$("textPreview");if(old)old.remove();pre.id="textPreview";$("files").after(pre);$("status").textContent="Texto aberto: "+name}catch(e){$("status").textContent="Não foi possível ler: "+e.message}}
+$("modFile").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;zip=null;single=null;currentName=f.name.replace(/\.[^.]+$/,"")||"mod";try{
+if(f.name.toLowerCase().endsWith(".zip")){if(!window.JSZip)throw Error("JSZip indisponível; verifique a internet.");$("status").textContent="Lendo ZIP...";zip=await JSZip.loadAsync(f);$("exportZip").disabled=false;$("status").textContent="ZIP carregado. Os arquivos foram listados."}
+else if(["glb","gltf"].includes(ext(f.name))){single=f;loadModel(f);$("status").textContent="Modelo GLB/GLTF selecionado."}
+else{single=f;$("status").textContent="Arquivo individual carregado; importe o ZIP completo para repacotar o mod."}
+renderFiles()}catch(err){zip=null;single=null;$("status").textContent="Erro: "+err.message;renderFiles()}});
+function loadModel(file){if(model)scene.remove(model);let url=URL.createObjectURL(file);gltfLoader.load(url,g=>{model=g.scene;scene.add(model);const box=new THREE.Box3().setFromObject(model);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());model.position.sub(center);const max=Math.max(size.x,size.y,size.z)||1;model.scale.setScalar(3/max);camera.position.set(4,2.5,5);camera.lookAt(0,0,0);$("status").textContent="Modelo 3D carregado.";URL.revokeObjectURL(url)},undefined,err=>{$("status").textContent="Falha ao carregar modelo: "+err.message;URL.revokeObjectURL(url)})}
+$("search").addEventListener("input",renderFiles);
+$("exportZip").addEventListener("click",async()=>{if(!zip)return;try{$("status").textContent="Gerando ZIP...";let blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}});let url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=currentName+"_exportado.zip";a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);$("status").textContent="ZIP exportado. Os arquivos internos não foram convertidos."}catch(e){$("status").textContent="Falha na exportação: "+e.message}});
+$("clear").onclick=()=>{zip=null;single=null;$("modFile").value="";$("files").textContent="Os arquivos aparecerão aqui.";$("summary").textContent="Nenhum mod carregado.";$("exportZip").disabled=true;$("status").textContent="Aguardando arquivo.";if(model){scene.remove(model);model=null}};
+</script>
+</body></html>
